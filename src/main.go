@@ -40,6 +40,12 @@ var (
 		150.0,
 		"Set font size for note",
 	)
+
+	addSpace *bool = flag.Bool(
+		"add_note_space",
+		false,
+		"Add bottom space for a note or not",
+	)
 )
 
 func addText(img *image.RGBA, x, y uint, text string, size float64) error {
@@ -119,17 +125,22 @@ func main() {
 				continue
 			}
 
-			if *note != "" && len(*note) > 1 {
-				extendedImageDimensions := image.Rectangle{
-					image.Pt(0, 0),
-					image.Pt(srcPDFImage.Bounds().Dx(), srcPDFImage.Bounds().Dy()+int(*fontSize)+1),
+			switch *note != "" {
+			case true:
+				var newImage *image.RGBA
+				if *addSpace {
+					extendedImageDimensions := image.Rectangle{
+						image.Pt(0, 0),
+						image.Pt(srcPDFImage.Bounds().Dx(), srcPDFImage.Bounds().Dy()+int(*fontSize)+int(*fontSize/2)),
+					}
+					newImage = image.NewRGBA(extendedImageDimensions)
+					draw.Draw(newImage, newImage.Bounds(), image.White, image.Pt(0, 0), draw.Src)
+				} else {
+					newImage = image.NewRGBA(srcPDFImage.Bounds())
 				}
-				newImage := image.NewRGBA(extendedImageDimensions)
-
-				draw.Draw(newImage, newImage.Bounds(), image.White, image.Pt(0, 0), draw.Src)
 				draw.Draw(newImage, srcPDFImage.Bounds(), srcPDFImage, image.Pt(0, 0), draw.Src)
 
-				err = addText(newImage, 0, uint(srcPDFImage.Bounds().Dy()), *note, *fontSize)
+				err = addText(newImage, 0, uint(srcPDFImage.Bounds().Dy()-int(*fontSize+*fontSize/4)), *note, *fontSize)
 				if err != nil {
 					fmt.Printf("[%d] Could not add text to %s, page %d: %s. Saving without additions...\n", count, entryName, i, err)
 					png.Encode(outputImageFile, srcPDFImage)
@@ -137,7 +148,7 @@ func main() {
 				}
 
 				png.Encode(outputImageFile, newImage)
-			} else {
+			case false:
 				png.Encode(outputImageFile, srcPDFImage)
 			}
 

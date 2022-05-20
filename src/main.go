@@ -73,7 +73,7 @@ func addText(img *image.RGBA, x, y uint, text string, size float64) error {
 func main() {
 	flag.Usage = func() {
 		fmt.Printf(`  -add_note_space
-        Add bottom space for a note or not
+        Add additional white bottom space below a note or not
   -dst_dir string
         Specify path to the output directory (default "output_images")
   -fontsize float

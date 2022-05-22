@@ -13,6 +13,7 @@ import (
 	"github.com/gen2brain/go-fitz"
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
+	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/image/font/gofont/goregular"
 )
 
@@ -25,7 +26,7 @@ var (
 
 	extractionDirPath *string = flag.String(
 		"dst_dir",
-		"output_images",
+		"output",
 		"Specify path to the output directory",
 	)
 
@@ -45,6 +46,12 @@ var (
 		"add_note_space",
 		false,
 		"Add bottom space for a note or not",
+	)
+
+	backToPdf *bool = flag.Bool(
+		"back_to_pdf",
+		false,
+		"Convert extracted pages with a note back to pdf",
 	)
 )
 
@@ -72,7 +79,7 @@ func addText(img *image.RGBA, x, y uint, text string, size float64) error {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Printf(`  -add_note_space
+		fmt.Printf(`  -add_note_space bool
         Add additional white bottom space below a note or not
   -dst_dir string
         Specify path to the output directory (default "output_images")
@@ -82,6 +89,8 @@ func main() {
         Set a note that will be added to the bottom of each extracted image
   -src_dir string
         Specify path to the directory where each found PDF file's pages will be converted to images (default ".")
+  -back_to_pdf bool
+  		Convert extracted pages with a note back to pdf
   
 (c) Kasyanov Nikolay Alexeyevich (Unbewohnte)
 `)
@@ -125,6 +134,19 @@ func main() {
 			continue
 		}
 
+		if *note == "" && *backToPdf {
+			fmt.Printf("No note was specified. No need to convert back to PDF !\n")
+			*backToPdf = false
+		}
+
+		customPDF := gofpdf.New("P", "pt", "A4", "")
+		customPDF.AddUTF8FontFromBytes("goregular", "", goregular.TTF)
+		customPDF.SetFont("goregular", "", 15)
+		err = customPDF.Error()
+		if err != nil {
+			fmt.Printf("Could not create a new custom PDF: %s\n", err)
+		}
+
 		for i := 0; i < pdf.NumPage(); i++ {
 			srcPDFImage, err := pdf.Image(i)
 			if err != nil {
@@ -132,9 +154,8 @@ func main() {
 				continue
 			}
 
-			outputImageFile, err := os.Create(
-				filepath.Join(saveDirPath,
-					strings.TrimSuffix(entryName, ".pdf")+fmt.Sprintf("_%d", i)+".png"))
+			outputImageFilePath := filepath.Join(saveDirPath, strings.TrimSuffix(entryName, ".pdf")+fmt.Sprintf("_%d", i)+".png")
+			outputImageFile, err := os.Create(outputImageFilePath)
 			if err != nil {
 				fmt.Printf("[%d] Could not create image file for %s page %d: %s\n", count, entryName, i, err)
 				continue
@@ -162,12 +183,40 @@ func main() {
 					continue
 				}
 
-				png.Encode(outputImageFile, newImage)
+				err = png.Encode(outputImageFile, newImage)
+				if err != nil {
+					fmt.Printf("[%d] Could not encode %s, page %d to png format: %s\n", count, entryName, i, err)
+					continue
+				}
+				outputImageFile.Sync()
+
+				if *backToPdf {
+					// customPDF.AddPage()
+					customPDF.AddPageFormat("P", gofpdf.SizeType{
+						Wd: float64(newImage.Bounds().Dx()),
+						Ht: float64(newImage.Bounds().Dy()),
+					})
+					pageW, pageH, _ := customPDF.PageSize(i)
+					//  := customPDF.GetPageSize()
+
+					customPDF.Image(outputImageFilePath, 0, 0, pageW, pageH, false, "", 0, "")
+				}
 			case false:
 				png.Encode(outputImageFile, srcPDFImage)
 			}
 
 			outputImageFile.Close()
 		}
+
+		if *note != "" && *backToPdf {
+			err = customPDF.OutputFileAndClose(
+				filepath.Join(saveDirPath, strings.TrimSuffix(entryName, ".pdf")+"_with_note.pdf"),
+			)
+			if err != nil {
+				fmt.Printf("Could not convert %s's pages back to pdf with a note: %s\n", entryName, err)
+			}
+		}
+
+		pdf.Close()
 	}
 }
